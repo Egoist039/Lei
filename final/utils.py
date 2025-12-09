@@ -1,25 +1,25 @@
 import numpy as np
 
-def limit_vector(vector, max_val):
-    """ 矢量限幅 """
-    norm = np.linalg.norm(vector)
-    return vector * (max_val / norm) if norm > max_val else vector
+# def limit_vector(vector, max_val):
+#     """ 矢量限幅 """
+#     norm = np.linalg.norm(vector)
+#     return vector * (max_val / norm) if norm > max_val else vector
 
 def wait_at(pos, steps):
     """ 生成原地等待的轨迹点 """
     return np.tile(pos, (steps, 1))
 
-def generate_s_curve_trajectory(p_start, p_end, steps):
-    """ 生成 S 型平滑轨迹 (五次多项式插值) """
-    t = np.linspace(0, 1, steps)
-    s = 10 * t ** 3 - 15 * t ** 4 + 6 * t ** 5
-    traj = np.zeros((steps, 3))
-    for i in range(3):
-        traj[:, i] = p_start[i] + (p_end[i] - p_start[i]) * s
-    return traj
+# def generate_s_curve_trajectory(p_start, p_end, steps):
+#     """ 生成 S 型平滑轨迹 (五次多项式插值) """
+#     t = np.linspace(0, 1, steps)
+#     s = 10 * t ** 3 - 15 * t ** 4 + 6 * t ** 5
+#     traj = np.zeros((steps, 3))
+#     for i in range(3):
+#         traj[:, i] = p_start[i] + (p_end[i] - p_start[i]) * s
+#     return traj
 
 def generate_continuous_path_from_waypoints(waypoints, total_steps):
-    """ 将稀疏的路点插值为连续的平滑轨迹 """
+
     waypoints = np.array(waypoints)
     if len(waypoints) < 2: return wait_at(waypoints[0], total_steps)
 

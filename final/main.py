@@ -4,7 +4,6 @@ import traceback
 # 引入模块
 from scene import Scene
 from shelf import Shelf
-# 确保 robot 模块里有 Robot3DoF_Spatial 和 TorquePIDController
 from robot import Robot3DoF_Spatial, TorquePIDController
 from planner import JointRRTPlanner, TaskPlanner
 from simulation import Simulation
@@ -14,7 +13,6 @@ from safe_point_manager import SafePointManager
 
 
 def setup_scene():
-    """ 场景配置 """
     scene = Scene()
     dist_y, dist_x_gap = 0.55, 0.16
     shelves = {
@@ -34,13 +32,6 @@ def execute_simulation_dynamics(robot, scene, monitor, traj_data, task_points):
 
     print(f"[Main] Starting Dynamics Simulation (PD + Gravity Comp)...")
 
-    # === 1. PID 参数调整 (纯 PD 控制) ===
-    # Kp: 提供定位刚度 (可以适当大一点)
-    # Ki: 设为 0.0 (不再需要积分项！)
-    # Kd: 提供阻尼，防止震荡Kp_vec = np.array([198.8, 372.6, 43.2])
-    # Ki_vec = np.array([3.2, 33.5, 18.7])
-    # Kd_vec = np.array([9.8, 9.5, 1.4])
-
     Kp_vec = np.array([185.1, 118.0, 155.3])
     Ki_vec = np.array([6.0, 12.9, 11.3])
     Kd_vec = np.array([10.3, 7.4, 1.0])
@@ -59,28 +50,15 @@ def execute_simulation_dynamics(robot, scene, monitor, traj_data, task_points):
         for i, target_q in enumerate(q_traj):
             t_now = i * dt
 
-            # --- 步骤 A: 计算 PD 输出 ---
-            # 此时 tau_pd 只负责"去哪"，不负责"抗重力"
             tau_pd = pid.update(target_q, q, dq)
-
-            # --- 步骤 B: 计算重力补偿 (Feedforward) ---
-            # 问 robot: "要在当前角度保持静止，需要多少力矩？"
             tau_gravity = robot.get_gravity_torque(q)
-
-            # --- 步骤 C: 总力矩叠加 ---
-            # 总力矩 = PD修正力 + 抗重力支撑力
             tau_cmd = tau_pd + tau_gravity
-
-            # --- 步骤 D: 物理引擎推演 ---
-            # 注意: robot.forward_dynamics 内部是 tau_applied - G
-            # 所以我们传入 (tau_pd + G)，物理引擎里减去 G，
-            # 剩下的净力矩正好就是 tau_pd，用来驱动运动 (F=ma)
             ddq = robot.forward_dynamics(q, dq, tau_cmd)
 
             dq += ddq * dt
             q += dq * dt
 
-            # --- Step 4: 数据记录 ---
+            #
             fk = robot.forward_kinematics(q)
             history['q'].append(q.copy())
             history['ee'].append(fk[-1].copy())
@@ -100,12 +78,11 @@ def execute_simulation_dynamics(robot, scene, monitor, traj_data, task_points):
         print("[Main] Playing Animation...")
         sim = Simulation(scene, robot, history, {'p_pick': task_points[0], 'p_place': task_points[1]})
         sim.run(interval=10)
-        monitor.plot()  # 将绘制三个关节的详细图表
+        monitor.plot()  #
 
 
 def main():
-    # ... (保持原有的 main 逻辑不变，只需确保调用 execute_simulation_dynamics) ...
-    # 1. 获取任务
+
     try:
         ui = UserInterface(valid_shelves=['A', 'B', 'C', 'D'], layers_range=range(1, 4))
         task_cfg = ui.get_user_task()
@@ -133,12 +110,8 @@ def main():
         return
 
     full_traj, phases, modes, task_points = result
-
-    # 可视化规划路径
     vis_pts = [robot.forward_kinematics(q)[-1] for q in full_traj]
     scene.draw_trajectory(np.array(vis_pts), color='lime')
-
-    # 4. 执行 (动力学)
     execute_simulation_dynamics(robot, scene, monitor, (full_traj, phases, modes), task_points)
 
 

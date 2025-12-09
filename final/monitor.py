@@ -6,26 +6,21 @@ class PerformanceMonitor:
     def __init__(self):
         self.time_log = []
         self.pos_error_log = []
-
-        # [新增] 关节级数据
         self.joint_targets = []
         self.joint_actuals = []
         self.torques = []
 
     def log(self, t, target_pos, current_pos, target_q, current_q, torque):
-        """ 记录更多数据 """
-        # 笛卡尔误差
+
         err = np.linalg.norm(target_pos - current_pos)
         self.pos_error_log.append(err)
         self.time_log.append(t)
-
-        # 关节数据
         self.joint_targets.append(target_q.copy())
         self.joint_actuals.append(current_q.copy())
         self.torques.append(torque.copy())
 
     def plot(self):
-        """ 绘制三个关节的详细 PID 过程 """
+
         if not self.time_log:
             print("[Monitor] No data.")
             return
@@ -63,10 +58,10 @@ class PerformanceMonitor:
         plt.show()
 
         # 可选：如果你还想看笛卡尔误差
-        plt.figure(figsize=(8, 4))
-        plt.plot(self.time_log, self.pos_error_log, 'k-')
-        plt.title("Cartesian Tracking Error")
-        plt.xlabel("Time (s)")
-        plt.ylabel("Error (m)")
-        plt.grid(True)
-        plt.show()
+        # plt.figure(figsize=(8, 4))
+        # plt.plot(self.time_log, self.pos_error_log, 'k-')
+        # plt.title("Cartesian Tracking Error")
+        # plt.xlabel("Time (s)")
+        # plt.ylabel("Error (m)")
+        # plt.grid(True)
+        # plt.show()

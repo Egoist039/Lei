@@ -9,30 +9,24 @@ from robot import Robot3DoF_Spatial, TorquePIDController
 
 class PIDGeneticOptimizer:
     def __init__(self, robot, pop_size=50, generations=20, mutation_rate=0.1):
-        """
-        :param robot: 机器人实例
-        :param pop_size: 种群大小 (每一代有多少个个体)
-        :param generations: 进化代数
-        :param mutation_rate: 变异概率
-        """
+
         self.robot = robot
         self.pop_size = pop_size
         self.generations = generations
         self.mutation_rate = mutation_rate
 
-        # 搜索范围 [min, max]
-        # 结构: [Joint1_PID, Joint2_PID, Joint3_PID]
+
         self.bounds = {
             'Kp': [(10, 200), (50, 600), (10, 300)],
             'Ki': [(0, 10), (0, 50), (0, 20)],
             'Kd': [(1, 20), (5, 50), (1, 30)]
         }
 
-        # 基因长度: 3个关节 * 3个参数 = 9个基因
+
         self.gene_length = 9
 
     def _create_individual(self):
-        """ 创建一个随机个体 """
+
         genes = []
         for i in range(3):
             kp = random.uniform(*self.bounds['Kp'][i])
@@ -42,16 +36,14 @@ class PIDGeneticOptimizer:
         return np.array(genes)
 
     def _decode_genes(self, genes):
-        """ 解码基因 """
+
         Kp_vec = np.array([genes[0], genes[3], genes[6]])
         Ki_vec = np.array([genes[1], genes[4], genes[7]])
         Kd_vec = np.array([genes[2], genes[5], genes[8]])
         return Kp_vec, Ki_vec, Kd_vec
 
     def fitness_function(self, genes):
-        """
-        适应度函数: 赋予关节3最高权重
-        """
+
         Kp, Ki, Kd = self._decode_genes(genes)
 
         # 1. 初始化控制器
@@ -72,27 +64,15 @@ class PIDGeneticOptimizer:
         try:
             for i in range(steps):
                 current_target = q_start if i < 10 else q_target
-
-                # --- 控制回路 ---
                 tau_pid = pid.update(current_target, q, dq)
                 tau_g = self.robot.get_gravity_torque(q)
                 tau_cmd = tau_pid + tau_g
-
-                # --- 物理引擎 ---
                 ddq = self.robot.forward_dynamics(q, dq, tau_cmd)
                 dq += ddq * dt
                 q += dq * dt
-
-                # --- 计算代价 ---
                 err = np.abs(current_target - q)
-
-                # [核心修改] 权重分配: [Joint1, Joint2, Joint3]
-                # 之前是 [1.0, 2.0, 1.0]，现在给 Joint 3 最高权重
                 weights = np.array([1.0, 1.0, 3.0])
-
                 total_error += np.sum(err * weights)
-
-                # 力矩惩罚 (防止过度震荡)
                 total_effort += np.sum(np.abs(tau_cmd)) * 0.001
 
                 if np.max(np.abs(q)) > 10.0:
