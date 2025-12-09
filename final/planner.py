@@ -64,12 +64,29 @@ class JointRRTPlanner:
             return None
 
     def generate_linear_path(self, q_start, q_end, steps, hold_steps=0):
+        """
+        生成路径：使用余弦插值 (S-Curve) 替代纯线性插值
+        公式: factor = 0.5 * (1 - cos(t * pi))
+        """
         path = []
         if q_start is None or q_end is None: return path
+
         for i in range(steps):
-            path.append(q_start + (q_end - q_start) * (i / steps))
+            # 1. 归一化时间 t: 0.0 -> 1.0
+            t = i / steps
+
+            # 2. 余弦插值核心公式
+            # t=0 -> cos(0)=1  -> factor=0
+            # t=1 -> cos(pi)=-1 -> factor=1
+            factor = 0.5 * (1 - np.cos(t * np.pi))
+
+            # 3. 计算位置
+            q_new = q_start + (q_end - q_start) * factor
+            path.append(q_new)
+
         for _ in range(hold_steps):
             path.append(q_end)
+
         return path
 
     def generate_smart_path(self, q_start, q_end, obstacle_list, robot):

@@ -178,18 +178,78 @@ class Robot3DoF_Spatial:
 
         return np.array([0.0, tau2, tau3])
 
-    def forward_dynamics(self, q, dq, tau_applied):
+    def compute_coriolis_matrix(self, q, dq):
+        """
+        利用数值差分法计算科氏力矩阵 C(q, dq)
+        基于 Christoffel 符号公式
+        """
+        n = len(q)
+        epsilon = 1e-6  # 差分步长
+        M = self.compute_mass_matrix(q)
+        C = np.zeros((n, n))
 
+        # 1. 计算 M 对 q 的偏导数矩阵 dM/dqi
+        # dM_dq[i] 存储的是 dM / dqi (形状 3x3)
+        dM_dq = []
+        for i in range(n):
+            q_plus = q.copy()
+            q_plus[i] += epsilon
+            M_plus = self.compute_mass_matrix(q_plus)
+
+            q_minus = q.copy()
+            q_minus[i] -= epsilon
+            M_minus = self.compute_mass_matrix(q_minus)
+
+            dM_dqi = (M_plus - M_minus) / (2 * epsilon)
+            dM_dq.append(dM_dqi)
+
+        # 2. 计算 Christoffel 符号并构建 C 矩阵
+        # C_kj = sum( c_ijk * dq_i )
+        # c_ijk = 0.5 * (dM_kj/dqi + dM_ki/dqj - dM_ij/dqk)
+        for k in range(n):
+            for j in range(n):
+                c_kj = 0.0
+                for i in range(n):
+                    # 提取偏导项
+                    dMkj_dqi = dM_dq[i][k, j]
+                    dMki_dqj = dM_dq[j][k, i]
+                    dMij_dqk = dM_dq[k][i, j]
+
+                    # Christoffel 符号公式
+                    c_ijk = 0.5 * (dMkj_dqi + dMki_dqj - dMij_dqk)
+
+                    # 累加得到 C 矩阵元素
+                    c_kj += c_ijk * dq[i]
+
+                C[k, j] = c_kj
+
+        return C
+
+    def forward_dynamics(self, q, dq, tau_applied):
+        """
+        [更新版] 核心动力学方程 F = ma
+        M(q)ddq + C(q,dq)dq + G(q) + Friction = Tau
+        """
+        # 1. 计算各项动力学矩阵
         M = self.compute_mass_matrix(q)
         G = self.get_gravity_torque(q)
+        C_mat = self.compute_coriolis_matrix(q, dq)  # [新增] 计算 C 矩阵
 
-        # 你可以根据需要注释掉这一行来测试无摩擦情况
+        # 2. 计算科氏力项力矩 Vector (C * dq)
+        tau_coriolis = C_mat @ dq
+
+        # 3. 摩擦力模型
         friction = (0.5 * dq) + (0.2 * np.tanh(dq * 10))
 
-        rhs = tau_applied - G - friction
+        # 4. 动力学平衡方程
+        # M * ddq = Tau_applied - C*dq - G - Friction
+        rhs = tau_applied - tau_coriolis - G - friction
 
-        # 求解加速度 ddq
+        # 5. 求解加速度
+        # 为了防止 M 矩阵奇异导致报错，通常加一个极小的正则化项(可选)
+        # M_reg = M + 1e-6 * np.eye(3)
         ddq = np.linalg.solve(M, rhs)
+
         return ddq
 
 
