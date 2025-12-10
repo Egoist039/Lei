@@ -98,6 +98,8 @@ def main():
     monitor = PerformanceMonitor()
     scene, shelves_db = setup_scene()
     safe_manager = SafePointManager(scene, robot, planner_algo)
+    safe_manager.solve_all_iks()
+    scene.add_safe_points(safe_manager.safe_points_map)
 
     # 3. 规划
     task_planner = TaskPlanner(robot, planner_algo, safe_manager, scene)

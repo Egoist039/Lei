@@ -25,6 +25,20 @@ class Scene:
         self.shelves.append(shelf)
         self.global_obstacles.extend(shelf.get_obstacle_list())
 
+    def add_safe_points(self, safe_points_map):
+
+        if not safe_points_map:
+            return
+
+        points = np.array(list(safe_points_map.values()))
+        self.ax.scatter(points[:, 0], points[:, 1], points[:, 2],
+                        c='green', s=100, marker='x', zorder=10, label='Safe Points')
+
+        # 3. 刷新图例
+        handles, labels = self.ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        self.ax.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=10)
+
     # def add_obstacle(self, box):
     #
     #     self.global_obstacles.append(box)
