@@ -239,6 +239,7 @@ class Robot3DoF_Spatial:
         tau_coriolis = C_mat @ dq
 
         # 3. 摩擦力模型
+        friction = 0
         friction = (0.5 * dq) + (0.2 * np.tanh(dq * 10))
 
         # 4. 动力学平衡方程
