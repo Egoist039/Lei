@@ -3,9 +3,6 @@ import random
 from utils import generate_continuous_path_from_waypoints
 
 
-# ==========================================
-# 1. 底层运动规划器 (原 JointRRTPlanner)
-# ==========================================
 class JointRRTPlanner:
     class Node:
         def __init__(self, q, parent=None):
@@ -25,8 +22,8 @@ class JointRRTPlanner:
 
     def _is_colliding(self, q, obstacle_list, robot):
         fk = robot.forward_kinematics(q)
-        pts = [fk[1], fk[2], fk[3], fk[4]]  # 肩, 肘, 腕, 手
-        if fk[2][2] < 0.05 or fk[3][2] < 0.02 or fk[4][2] < 0.02: return True  # 地面
+        pts = [fk[1], fk[2], fk[3], fk[4]]
+        if fk[2][2] < 0.05 or fk[3][2] < 0.02 or fk[4][2] < 0.02: return True
         for i in range(len(pts) - 1):
             if self._check_segment_collision(pts[i], pts[i + 1], obstacle_list): return True
         return False
@@ -67,12 +64,29 @@ class JointRRTPlanner:
             return None
 
     def generate_linear_path(self, q_start, q_end, steps, hold_steps=0):
+        """
+        生成路径：使用余弦插值 (S-Curve) 替代纯线性插值
+        公式: factor = 0.5 * (1 - cos(t * pi))
+        """
         path = []
         if q_start is None or q_end is None: return path
+
         for i in range(steps):
-            path.append(q_start + (q_end - q_start) * (i / steps))
+            # 1. 归一化时间 t: 0.0 -> 1.0
+            t = i / steps
+
+            # 2. 余弦插值核心公式
+            # t=0 -> cos(0)=1  -> factor=0
+            # t=1 -> cos(pi)=-1 -> factor=1
+            factor = 0.5 * (1 - np.cos(t * np.pi))
+
+            # 3. 计算位置
+            q_new = q_start + (q_end - q_start) * factor
+            path.append(q_new)
+
         for _ in range(hold_steps):
             path.append(q_end)
+
         return path
 
     def generate_smart_path(self, q_start, q_end, obstacle_list, robot):
@@ -141,9 +155,6 @@ class JointRRTPlanner:
         return np.vstack([path_a, path_b]) if a_is_start else np.vstack([path_b, path_a])
 
 
-# ==========================================
-# 2. 高层任务规划器 (原 PickPlaceSolver)
-# ==========================================
 class TaskPlanner:
     def __init__(self, robot, planner_algo, safe_manager, scene):
         self.robot = robot
@@ -153,16 +164,11 @@ class TaskPlanner:
         self.full_q_traj, self.full_phases, self.full_modes = [], [], []
 
     def plan_pick_and_place(self, pick_shelf, pick_layer, place_shelf, place_layer, obj_size=0.04):
-        """ 规划完整的抓取-放置任务 """
         self.full_q_traj, self.full_phases, self.full_modes = [], [], []
-
-        # 1. 几何计算
         raw_p_pick = pick_shelf.get_target_pos(pick_layer, obj_size)
         raw_p_place = place_shelf.get_target_pos(place_layer, obj_size)
         p_pick, p_pick_ent = pick_shelf.calculate_approach_points(raw_p_pick)
         p_place, p_place_ent = place_shelf.calculate_approach_points(raw_p_place)
-
-        # 2. IK 计算
         self.safe_manager.solve_all_iks()
         iks = self._solve_all_keyframes(p_pick, p_pick_ent, p_place, p_place_ent)
         if iks is None: return None
@@ -171,27 +177,22 @@ class TaskPlanner:
 
         print(f"[TaskPlanner] Path: Safe -> Pick -> Safe -> Place")
 
-        # 3. 路径拼接
-        # Phase 1: Approach
+
         self._add_segment(q_safe_start, q_pick_ent, 1, 1, smart=True)
         self._add_segment(q_pick_ent, q_pick, 1, 1, linear=True, pause=10)
-        # Phase 2: Transfer
         self._add_segment(q_pick, q_pick_ent, 2, 1, linear=True)
         self._add_segment(q_pick_ent, q_safe_end, 2, 1, smart=True)
         self._add_segment(q_safe_end, q_place_ent, 2, 1, smart=True)
         self._add_segment(q_place_ent, q_place, 2, 1, linear=True, pause=10)
-        # Phase 3: Return
         self._add_segment(q_place, q_place_ent, 3, 1, linear=True)
         self._add_segment(q_place_ent, q_safe_end, 3, 1, smart=True)
 
         return np.array(self.full_q_traj), self.full_phases, self.full_modes, (p_pick, p_place)
 
     def _solve_all_keyframes(self, p_pick, p_pick_ent, p_place, p_place_ent):
-        # 简化版 IK 流程：找安全点 -> 计算 Entry -> 计算 Target
         _, q_safe_start = self.safe_manager.get_closest_safe_config(p_pick_ent)
         q_pick_ent = self._try_ik(p_pick_ent, q_safe_start, safe_check=True)
         q_pick = self._try_ik(p_pick, q_pick_ent, safe_check=False)  # 末端容忍碰撞
-
         _, q_safe_end = self.safe_manager.get_closest_safe_config(p_place_ent)
         q_place_ent = self._try_ik(p_place_ent, q_safe_end, safe_check=True)
         q_place = self._try_ik(p_place, q_place_ent, safe_check=False)
@@ -201,12 +202,11 @@ class TaskPlanner:
         return q_safe_start, q_pick_ent, q_pick, q_safe_end, q_place_ent, q_place
 
     def _try_ik(self, pos, seed, safe_check=True):
-        """ 尝试多种方式解 IK """
+
         if seed is None: return None
         # 优先用 SafeManager 的 Elbow-Up 约束
         q = self.safe_manager._solve_ik_elbow_up(pos, seed)
         if q is None:
-            # 降级用通用 IK
             q = self.planner.compute_ik(self.robot, pos, seed, self.scene.global_obstacles, check_collision=safe_check)
         return q
 

@@ -21,16 +21,10 @@ class Shelf:
         return np.array([self.cx, self.cy, z])
 
     def calculate_approach_points(self, target_pos_xyz):
-        """
-        计算接近点和进入点
-        基于从原点到货架中心的向量方向，向内回缩计算
-        :return: (p_act, p_ent) -> (实际抓取/放置前的操作点, 远离货架的进入点)
-        """
-        # 假设机械臂基座在 (0,0,0)，计算指向货架的向量
+
         vec_to_shelf = np.array([self.cx, self.cy, 0.0])
         dist = np.linalg.norm(vec_to_shelf)
 
-        # 归一化方向向量
         if dist < 1e-6:
             dir_inwards = np.array([0, 0, 0])
         else:
@@ -64,28 +58,21 @@ class Shelf:
         return obstacles
 
     def plot(self, ax):
-        """
-        绘制实心货架
-        """
+
         hw, hd = self.width / 2, self.depth / 2
 
-        # 1. 绘制每一层层板 (实心 + 边框)
         for h in self.layer_heights:
             # 定义四个顶点
             x_min, x_max = self.cx - hw, self.cx + hw
             y_min, y_max = self.cy - hd, self.cy + hd
             z_val = h
 
-            # 用于画线的坐标序列 (闭合)
             xx = [x_min, x_max, x_max, x_min, x_min]
             yy = [y_min, y_min, y_max, y_max, y_min]
             zz = [z_val] * 5
 
-            # 绘制边框线
             ax.plot(xx, yy, zz, color='#5C3317', lw=1.5)
 
-            # 绘制实心面
-            # 顶点格式: [(x1,y1,z1), (x2,y2,z2), (x3,y3,z3), (x4,y4,z4)]
             verts = [list(zip(xx[:-1], yy[:-1], zz[:-1]))]
             # alpha=0.3 半透明，方便看穿
             poly = Poly3DCollection(verts, alpha=0.3, facecolors='#8B4513')

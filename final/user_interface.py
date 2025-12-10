@@ -1,9 +1,6 @@
 class UserInterface:
     def __init__(self, valid_shelves, layers_range):
-        """
-        :param valid_shelves: 合法的货架ID列表，如 ['A', 'B', 'C', 'D']
-        :param layers_range: 层数范围，如 range(1, 4) 代表 1,2,3 层
-        """
+
         self.valid_shelves = valid_shelves
         self.valid_layers = list(layers_range)
 

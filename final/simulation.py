@@ -6,7 +6,6 @@ from matplotlib.animation import FuncAnimation
 class Simulation:
     def __init__(self, scene, robot, history_data, task_info):
         """
-        初始化动画模拟器
         :param scene: Scene 对象 (包含绘图元素和障碍物列表)
         :param robot: Robot 对象 (用于 FK 计算)
         :param history_data: 字典，包含 keys: ['q', 'ee', 'phase', 'wrist_mode']
@@ -14,31 +13,17 @@ class Simulation:
         """
         self.scene = scene
         self.robot = robot
-
-        # 解包历史数据
         self.history_q = history_data['q']
         self.history_ee = history_data['ee']
         self.phase_tracker = history_data['phase']
         self.wrist_modes = history_data['wrist_mode']
-
-        # 任务关键点 (用于绘制静态物体)
         self.p_pick = task_info['p_pick']
         self.p_place = task_info['p_place']
-
-        # 初始化场景中的动态元素
-        # 返回: arm_line, path_line, gripper_line, ball_joint_dot, obj_dot
         self.lines = self.scene.init_dynamic_elements()
-
-        # 轨迹线数据缓存
         self.path_x, self.path_y, self.path_z = [], [], []
 
     def _is_colliding(self, joint_positions):
-        """
-        简单的可视化碰撞检测 (仅检测肘部和腕部是否在障碍物内)
-        用于在动画中将机械臂变红作为警告
-        """
 
-        # 定义简单的点碰撞检测内部函数
         def check_point(pt):
             x, y, z = pt
             if z < 0.0: return True  # 地面
@@ -57,11 +42,7 @@ class Simulation:
         return False
 
     def update(self, frame_idx):
-        """
-        动画帧更新函数
-        """
-        # [修复] 如果是动画的第一帧，清空之前的轨迹数据
-        # 防止动画循环时出现从终点连回起点的直线
+
         if frame_idx == 0:
             self.path_x, self.path_y, self.path_z = [], [], []
 
@@ -143,14 +124,9 @@ class Simulation:
         return self.scene.arm_line, self.scene.path_line, self.scene.gripper_line, self.scene.obj_dot
 
     def run(self, interval=20, save_path=None):
-        """
-        开始播放动画
-        :param interval: 帧间隔 (ms)
-        :param save_path: 如果不为None，则保存为mp4/gif (需要安装ffmpeg或imagemagick)
-        """
+
         print(f"Starting Animation ({len(self.history_q)} frames)...")
 
-        # 为了流畅，每隔 5 帧渲染一次 (skip frames)
         skip = 5
         frames = range(0, len(self.history_q), skip)
 
