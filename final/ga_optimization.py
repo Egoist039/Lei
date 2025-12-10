@@ -150,5 +150,5 @@ class PIDGeneticOptimizer:
 
 if __name__ == "__main__":
     robot = Robot3DoF_Spatial()
-    optimizer = PIDGeneticOptimizer(robot, pop_size=50, generations=40)
+    optimizer = PIDGeneticOptimizer(robot, pop_size=50, generations=100)
     optimizer.run()

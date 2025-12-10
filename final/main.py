@@ -35,6 +35,9 @@ def execute_simulation_dynamics(robot, scene, monitor, traj_data, task_points):
     Kp_vec = np.array([185.1, 118.0, 155.3])
     Ki_vec = np.array([6.0, 12.9, 11.3])
     Kd_vec = np.array([10.3, 7.4, 1.0])
+    # Kp_vec = np.array([182.8, 471.9, 121.1])
+    # Ki_vec = np.array([3.2, 11.5, 2.6])
+    # Kd_vec = np.array([15.2, 32.3, 1.0])
 
 
     pid = TorquePIDController(Kp=Kp_vec, Ki=Ki_vec, Kd=Kd_vec, dt=0.01,
