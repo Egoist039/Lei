@@ -126,7 +126,6 @@ class RRTPlanner:
         if np.linalg.norm(q1 - q2) < 0.1:
             return self.gen_linear_path(q1, q2, steps=50)
 
-        # print(f"  [Plan] RRT searching...")
         wpts = None
         for _ in range(3):
             wpts = self.plan(q1, q2, obs, robot)
@@ -230,7 +229,7 @@ class TaskScheduler:
     def _solve_keys(self, p_pick, p_pick_ent, p_place, p_place_ent):
         _, q_safe_1 = self.safe.get_nearest(p_pick_ent)
         q_pick_ent = self._try_ik(p_pick_ent, q_safe_1, check=True)
-        q_pick = self._try_ik(p_pick, q_pick_ent, check=False)  # 抓取末端不检碰撞
+        q_pick = self._try_ik(p_pick, q_pick_ent, check=False)
 
         _, q_safe_2 = self.safe.get_nearest(p_place_ent)
         q_place_ent = self._try_ik(p_place_ent, q_safe_2, check=True)
