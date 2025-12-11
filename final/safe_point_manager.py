@@ -10,8 +10,7 @@ class SafeManager:
         self.planner = planner
         self.pts = {
             'Front': np.array([0.25, 0.0, 0.45]),
-            'Back': np.array([-0.25, 0.0, 0.45])
-        }
+            'Back': np.array([-0.25, 0.0, 0.45]) }
         self.qs = {}
         self._draw()
 

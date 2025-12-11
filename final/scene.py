@@ -13,7 +13,6 @@ class Scene:
         self.ax.set_ylim(ylim)
         self.ax.set_zlim(zlim)
         self.ax.view_init(elev=30, azim=45)
-
         self.shelves = []
         self.obs = []
         self.ln_arm = None
@@ -29,7 +28,6 @@ class Scene:
     def draw_path(self, traj, col='green'):
         if traj is None or len(traj) == 0: return
         xs, ys, zs = traj[:, 0], traj[:, 1], traj[:, 2]
-        # 添加标签用于静态图例
         self.ax.plot(xs, ys, zs, color=col, linestyle='--', lw=1, alpha=0.6, label='Planned Path')
         self.ax.legend(loc='upper right')
 
@@ -37,22 +35,17 @@ class Scene:
         for s in self.shelves: s.plot(self.ax)
         xx, yy = np.meshgrid(np.linspace(-0.8, 0.8, 2), np.linspace(-0.8, 0.8, 2))
         self.ax.plot_surface(xx, yy, np.zeros_like(xx), alpha=0.1, color='gray')
-
         self.ax.set_xlabel("X")
         self.ax.set_ylabel("Y")
         self.ax.set_title("Robot Simulation")
 
     def init_dyn(self):
-        # 恢复图例标签
         self.ln_arm, = self.ax.plot([], [], [], 'o-', color='#333', lw=4, ms=6, label='Link')
         self.ln_path, = self.ax.plot([], [], [], '-', color='#1E90FF', lw=1.5, alpha=0.8, label='Trail')
         self.ln_grip, = self.ax.plot([], [], [], 'k-', lw=2.5, label='Gripper')
         self.ln_joint, = self.ax.plot([], [], [], 'o', color='gray', ms=5)
         self.ln_obj, = self.ax.plot([], [], [], 'o', color='#FF4500', ms=10, label='Object')
-
-        # 显示图例
         self.ax.legend(loc='upper right', frameon=True)
-
         return self.ln_arm, self.ln_path, self.ln_grip, self.ln_joint, self.ln_obj
 
     def show(self):

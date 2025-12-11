@@ -22,17 +22,15 @@ class RRTPlanner:
         else:
             self.limits = limits
 
-    # --- 原 utils.py 功能整合 ---
 
     def _wait(self, pos, steps):
-        # 原地等待
         return np.tile(pos, (steps, 1))
 
         # [Reference]
         # S-Curve Velocity Profile (Cosine Interpolation)
         # Theory: Craig (2005) "Introduction to Robotics", Chapter 7
     def _interp_path(self, wpts, total_steps):
-        # S-Curve 插值，原 generate_continuous_path_from_waypoints
+        # S-Curve
         wpts = np.array(wpts)
         if len(wpts) < 2: return self._wait(wpts[0], total_steps)
 
@@ -43,12 +41,10 @@ class RRTPlanner:
         if total_len < 1e-6: return self._wait(wpts[0], total_steps)
 
         t = np.linspace(0, 1, total_steps)
-        # 3-4-5次多项式平滑
         s = 10 * t ** 3 - 15 * t ** 4 + 6 * t ** 5
         target_dists = s * total_len
 
         traj = np.zeros((total_steps, 3))
-        # 找对应区间
         idx = np.searchsorted(cum_dist, target_dists, side='right') - 1
         idx = np.clip(idx, 0, len(wpts) - 2)
 
@@ -59,24 +55,20 @@ class RRTPlanner:
             traj[i] = wpts[k] + (wpts[k + 1] - wpts[k]) * ratio
         return traj
 
-    # --- RRT 核心逻辑 ---
 
+    #  RRT
     def dist(self, q1, q2):
         return np.linalg.norm(q1 - q2)
-
 
         # [Reference]
         # Collision detection via link discretization
         # Logic based on: LaValle (2006) "Planning Algorithms", Chapter 5.3
         # Implementation style reference: PythonRobotics
+
     def is_collide(self, q, obs, robot):
         fk = robot.fk(q)
         pts = [fk[1], fk[2], fk[3], fk[4]]  # p1, p2, wrist, tcp
-
-        # 撞地检测 (硬编码阈值保持不变)
         if fk[2][2] < 0.05 or fk[3][2] < 0.02 or fk[4][2] < 0.02: return True
-
-        # 杆件碰撞
         for i in range(len(pts) - 1):
             if self._seg_collide(pts[i], pts[i + 1], obs): return True
         return False
@@ -92,7 +84,7 @@ class RRTPlanner:
             x, y, z = curr
             for box in obs:
                 cx, cy, cz, w, d_box, h = box
-                # AABB 碰撞
+                # AABB collision
                 if (cx - w / 2 - margin <= x <= cx + w / 2 + margin) and \
                         (cy - d_box / 2 - margin <= y <= cy + d_box / 2 + margin) and \
                         (cz - h / 2 - margin <= z <= cz + h / 2 + margin):
@@ -111,9 +103,7 @@ class RRTPlanner:
     def get_ik(self, robot, target, seed, obs=None, check=True, max_iter=80, tol=0.015):
         try:
             q = robot.ik(target, seed, max_iter=max_iter, tol=tol)
-            # 精度检查
             if np.linalg.norm(robot.fk(q)[-1] - target) > 0.05: return None
-            # 碰撞检查
             if check:
                 if self.is_collide(q, obs, robot): return None
             return q
@@ -121,19 +111,15 @@ class RRTPlanner:
             return None
 
     def gen_linear_path(self, q1, q2, steps, hold=0):
-        # 简单的 Cosine 插值
         path = []
         if q1 is None or q2 is None: return path
-
         for i in range(steps):
             t = i / steps
             fac = 0.5 * (1 - np.cos(t * np.pi))
             q = q1 + (q2 - q1) * fac
             path.append(q)
-
         for _ in range(hold):
             path.append(q2)
-
         return path
 
     def gen_smart_path(self, q1, q2, obs, robot):
@@ -217,14 +203,11 @@ class TaskScheduler:
     def plan_task(self, shelf_pick, l_pick, shelf_place, l_place, obj_size=0.04):
         self.traj, self.phases, self.modes = [], [], []
 
-        # 1. 计算所有关键点
         p_pick_raw = shelf_pick.get_target(l_pick, obj_size)
         p_place_raw = shelf_place.get_target(l_place, obj_size)
-
         p_pick, p_pick_ent = shelf_pick.get_approach(p_pick_raw)
         p_place, p_place_ent = shelf_place.get_approach(p_place_raw)
 
-        # 2. 计算 IK
         self.safe.solve_iks()
         iks = self._solve_keys(p_pick, p_pick_ent, p_place, p_place_ent)
         if iks is None: return None
@@ -233,7 +216,6 @@ class TaskScheduler:
 
         print(f"[Task] Path: Safe -> Pick -> Safe -> Place")
 
-        # 3. 生成分段路径
         self._add(q_safe_1, q_pick_ent, 1, 1, smart=True)
         self._add(q_pick_ent, q_pick, 1, 1, linear=True, pause=10)
         self._add(q_pick, q_pick_ent, 2, 1, linear=True)
@@ -260,7 +242,7 @@ class TaskScheduler:
 
     def _try_ik(self, pos, seed, check=True):
         if seed is None: return None
-        # 优先用 elbow-up 解
+        # elbow-up
         q = self.safe.ik_elbow_up(pos, seed)
         if q is None:
             q = self.planner.get_ik(self.robot, pos, seed, self.scene.obs, check=check)

@@ -1,6 +1,5 @@
 import numpy as np
 import traceback
-
 from scene import Scene
 from shelf import Shelf
 from robot import Robot, PID
@@ -31,14 +30,18 @@ def run_dyn(robot, scene, mon, traj, pts):
 
     print(f"[Main] Sim Dynamics...")
 
-    # 优化前
+    # before optimized
     # kp = np.array([150, 30, 10])
     # ki = np.array([150, 30, 10])
     # kd = np.array([150, 30, 10])
-    # 优化后
-    kp = np.array([185.1, 118.0, 155.3])
-    ki = np.array([6.0, 12.9, 11.3])
-    kd = np.array([10.3, 7.4, 1.0])
+    # after optimized
+    # kp = np.array([185.1, 118.0, 155.3])
+    # ki = np.array([6.0, 12.9, 11.3])
+    # kd = np.array([10.3, 7.4, 1.0])
+    kp = np.array([200.0, 173.3, 89.2])
+    ki = np.array([2.3, 5.8, 15.3])
+    kd = np.array([13.8, 11.1, 1.0])
+
 
     pid = PID(kp, ki, kd, 0.01, robot.max_tau)
     q = qs[0].copy()

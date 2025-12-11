@@ -9,15 +9,11 @@ class Robot:
         self.m2 = 2.0
         self.m3 = 1.5
         self.g = 9.81
-
         self.r_c2 = np.array([self.l2 / 2, 0, 0])
         self.r_c3 = np.array([self.l3 / 2, 0, 0])
-
-        # 惯性张量保持原样
         self.I1 = np.diag([0.01, 0.01, 0.1])
         self.I2 = np.diag([0.01, (1 / 12) * self.m2 * self.l2 ** 2, (1 / 12) * self.m2 * self.l2 ** 2])
         self.I3 = np.diag([0.01, (1 / 12) * self.m3 * self.l3 ** 2, (1 / 12) * self.m3 * self.l3 ** 2])
-
         self.max_tau = 80.0
         self.max_vel = 3.0
         self.grip_len = self.l3 * 0.1
@@ -26,16 +22,13 @@ class Robot:
         t1, t2, t3 = q
         p0 = np.array([0, 0, 0])
         p1 = np.array([0, 0, self.l1])
-
         r2 = self.l2 * np.cos(t2)
         z2 = self.l2 * np.sin(t2)
         r_w = r2 + self.l3 * np.cos(t2 + t3)
         z_w = z2 + self.l3 * np.sin(t2 + t3)
-
         # gripper
         r_tcp = r_w + self.grip_len
         z_tcp = z_w
-
         p2 = np.array([r2 * np.cos(t1), r2 * np.sin(t1), self.l1 + z2])
         p_w = np.array([r_w * np.cos(t1), r_w * np.sin(t1), self.l1 + z_w])
         p_tcp = np.array([r_tcp * np.cos(t1), r_tcp * np.sin(t1), self.l1 + z_tcp])
@@ -84,7 +77,6 @@ class Robot:
         c2, s2 = np.cos(t2), np.sin(t2)
         c3, s3 = np.cos(t3), np.sin(t3)
 
-        # 旋转矩阵
         r1 = np.array([[c1, -s1, 0], [s1, c1, 0], [0, 0, 1]])
         ry2 = np.array([[c2, 0, s2], [0, 1, 0], [-s2, 0, c2]])
         r2 = r1 @ ry2
@@ -149,7 +141,6 @@ class Robot:
         C = np.zeros((n, n))
         dM_dq = []
 
-        # 差分法求导
         for i in range(n):
             q_p = q.copy();
             q_p[i] += eps

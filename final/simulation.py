@@ -18,7 +18,6 @@ class Sim:
         self.tr_x, self.tr_y, self.tr_z = [], [], []
 
     def check(self, j_pos):
-        # 碰撞变色
         def hit(pt):
             x, y, z = pt
             if z < 0: return True
