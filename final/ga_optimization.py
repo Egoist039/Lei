@@ -1,137 +1,154 @@
 import numpy as np
 import random
-from robot import Robot, PID
+import copy
+import time
+
+# 引入你的机器人和控制器
+from robot import Robot3DoF_Spatial, TorquePIDController
 
 
-class GA:
-    def __init__(self, robot, n_pop=50, gens=20):
-        self.bot = robot
-        self.n = n_pop
-        self.gens = gens
-        self.rate = 0.1
+class PIDGeneticOptimizer:
+    def __init__(self, robot, pop_size=50, generations=20, mutation_rate=0.1):
 
-        # Ranges: Kp, Ki, Kd
-        self.lim_p = [(10, 200), (50, 600), (10, 300)]
-        self.lim_i = [(0, 10), (0, 50), (0, 20)]
-        self.lim_d = [(1, 20), (5, 50), (1, 30)]
+        self.robot = robot
+        self.pop_size = pop_size
+        self.generations = generations
+        self.mutation_rate = mutation_rate
 
-    def rand_gene(self):
-        g = []
+
+        self.bounds = {
+            'Kp': [(10, 200), (50, 600), (10, 300)],
+            'Ki': [(0, 10), (0, 50), (0, 20)],
+            'Kd': [(1, 20), (5, 50), (1, 30)]
+        }
+
+
+        self.gene_length = 9
+
+    def _create_individual(self):
+
+        genes = []
         for i in range(3):
-            g.append(random.uniform(*self.lim_p[i]))
-            g.append(random.uniform(*self.lim_i[i]))
-            g.append(random.uniform(*self.lim_d[i]))
-        return np.array(g)
+            kp = random.uniform(*self.bounds['Kp'][i])
+            ki = random.uniform(*self.bounds['Ki'][i])
+            kd = random.uniform(*self.bounds['Kd'][i])
+            genes.extend([kp, ki, kd])
+        return np.array(genes)
 
-    def decode(self, g):
-        kp = np.array([g[0], g[3], g[6]])
-        ki = np.array([g[1], g[4], g[7]])
-        kd = np.array([g[2], g[5], g[8]])
-        return kp, ki, kd
+    def _decode_genes(self, genes):
 
-    def calc_fit(self, g):
-        kp, ki, kd = self.decode(g)
+        Kp_vec = np.array([genes[0], genes[3], genes[6]])
+        Ki_vec = np.array([genes[1], genes[4], genes[7]])
+        Kd_vec = np.array([genes[2], genes[5], genes[8]])
+        return Kp_vec, Ki_vec, Kd_vec
 
-        # Init controller
-        pid = PID(kp, ki, kd, 0.01, self.bot.max_tau)
+    def fitness_function(self, genes):
 
-        q = np.zeros(3)
+        Kp, Ki, Kd = self._decode_genes(genes)
+
+        # 1. 初始化控制器
+        pid = TorquePIDController(Kp, Ki, Kd, dt=0.01, max_torque=self.robot.max_torque)
+
+        # 2. 定义测试任务 (Step Response)
+        q_start = np.zeros(3)
+        q_target = np.array([0.5, 0.8, -0.5])
+
+        steps = 150
+        dt = 0.01
+
+        q = q_start.copy()
         dq = np.zeros(3)
-        tgt = np.array([0.5, 0.8, -0.5])
-
-        err_sum = 0.0
-        effort = 0.0
+        total_error = 0.0
+        total_effort = 0.0
 
         try:
-            for i in range(150):
-                ref = tgt if i > 10 else q
+            for i in range(steps):
+                current_target = q_start if i < 10 else q_target
+                tau_pid = pid.update(current_target, q, dq)
+                tau_g = self.robot.get_gravity_torque(q)
+                tau_cmd = tau_pid + tau_g
+                ddq = self.robot.forward_dynamics(q, dq, tau_cmd)
+                dq += ddq * dt
+                q += dq * dt
+                err = np.abs(current_target - q)
+                weights = np.array([1.0, 1.0, 3.0])
+                total_error += np.sum(err * weights)
+                total_effort += np.sum(np.abs(tau_cmd)) * 0.001
 
-                tau = pid.update(ref, q, dq) + self.bot.grav_tau(q)
-                ddq = self.bot.dynamics(q, dq, tau)
+                if np.max(np.abs(q)) > 10.0:
+                    return 1e9
 
-                dq += ddq * 0.01
-                q += dq * 0.01
-
-                # J3 weight higher
-                e = np.abs(ref - q)
-                err_sum += np.sum(e * [1.0, 1.0, 3.0])
-                effort += np.sum(np.abs(tau)) * 0.001
-
-                if np.max(np.abs(q)) > 10: return 1e9
-
-        except:
+        except Exception:
             return 1e9
 
-        return err_sum + effort
+        score = total_error + total_effort
+        return score
 
-    def select(self, pop, scores):
+    def selection(self, population, scores):
         parents = []
-        for _ in range(self.n):
-            # Tournament 3
-            idxs = random.sample(range(self.n), 3)
-            best = min(idxs, key=lambda i: scores[i])
-            parents.append(pop[best])
+        for _ in range(self.pop_size):
+            candidates_idx = random.sample(range(self.pop_size), 3)
+            best_idx = min(candidates_idx, key=lambda idx: scores[idx])
+            parents.append(population[best_idx])
         return np.array(parents)
 
-    def cross(self, parents):
-        kids = []
-        for i in range(0, self.n, 2):
-            p1, p2 = parents[i], parents[(i + 1) % self.n]
-            cut = random.randint(1, 8)
-            kids.append(np.concatenate((p1[:cut], p2[cut:])))
-            kids.append(np.concatenate((p2[:cut], p1[cut:])))
-        return np.array(kids)
+    def crossover(self, parents):
+        offspring = []
+        for i in range(0, self.pop_size, 2):
+            p1 = parents[i]
+            p2 = parents[(i + 1) % self.pop_size]
+            point = random.randint(1, self.gene_length - 1)
+            c1 = np.concatenate((p1[:point], p2[point:]))
+            c2 = np.concatenate((p2[:point], p1[point:]))
+            offspring.extend([c1, c2])
+        return np.array(offspring)
 
-    def mutate(self, pop):
-        for i in range(self.n):
-            if random.random() < self.rate:
-                idx = random.randint(0, 8)
-                # Map index to limit
-                j = idx // 3
-                t = idx % 3
-                if t == 0:
-                    b = self.lim_p[j]
-                elif t == 1:
-                    b = self.lim_i[j]
-                else:
-                    b = self.lim_d[j]
+    def mutation(self, offspring):
+        for i in range(self.pop_size):
+            if random.random() < self.mutation_rate:
+                gene_idx = random.randint(0, self.gene_length - 1)
+                joint_idx = gene_idx // 3
+                param_idx = gene_idx % 3
+                param_names = ['Kp', 'Ki', 'Kd']
+                key = param_names[param_idx]
+                bounds = self.bounds[key][joint_idx]
 
-                val = pop[i][idx]
-                delta = (random.random() - 0.5) * 0.4 * val
-                pop[i][idx] = np.clip(val + delta, b[0], b[1])
-        return pop
+                current_val = offspring[i][gene_idx]
+                delta = (random.random() - 0.5) * 0.4 * current_val
+                new_val = np.clip(current_val + delta, bounds[0], bounds[1])
+                offspring[i][gene_idx] = new_val
+        return offspring
 
     def run(self):
-        print(f"--- GA Start (N={self.n}) ---")
-        pop = np.array([self.rand_gene() for _ in range(self.n)])
+        print(f"=== Starting Genetic Algorithm (High Weight on Joint 3) ===")
+        population = np.array([self._create_individual() for _ in range(self.pop_size)])
+        best_overall_score = float('inf')
+        best_overall_genes = None
 
-        best_s = float('inf')
-        best_g = None
+        for gen in range(self.generations):
+            scores = [self.fitness_function(ind) for ind in population]
+            best_gen_score = min(scores)
 
-        for i in range(self.gens):
-            scores = [self.calc_fit(p) for p in pop]
-            min_s = min(scores)
+            if best_gen_score < best_overall_score:
+                best_overall_score = best_gen_score
+                best_overall_genes = population[scores.index(best_gen_score)].copy()
 
-            if min_s < best_s:
-                best_s = min_s
-                best_g = pop[scores.index(min_s)].copy()
+            print(f"Gen {gen + 1}/{self.generations} | Best Score: {best_gen_score:.4f}")
 
-            print(f"Gen {i + 1}: Best={min_s:.4f}")
+            parents = self.selection(population, scores)
+            offspring = self.crossover(parents)
+            population = self.mutation(offspring)
+            population[0] = best_overall_genes
 
-            parents = self.select(pop, scores)
-            kids = self.cross(parents)
-            pop = self.mutate(kids)
-            pop[0] = best_g  # Elitism
-
-        kp, ki, kd = self.decode(best_g)
-        print("\n=== Result ===")
-        print(f"Kp = {np.round(kp, 1).tolist()}")
-        print(f"Ki = {np.round(ki, 1).tolist()}")
-        print(f"Kd = {np.round(kd, 1).tolist()}")
-        return kp, ki, kd
+        Kp, Ki, Kd = self._decode_genes(best_overall_genes)
+        print("\nRecommended Parameters:")
+        print(f"Kp_vec = np.array([{Kp[0]:.1f}, {Kp[1]:.1f}, {Kp[2]:.1f}])")
+        print(f"Ki_vec = np.array([{Ki[0]:.1f}, {Ki[1]:.1f}, {Ki[2]:.1f}])")
+        print(f"Kd_vec = np.array([{Kd[0]:.1f}, {Kd[1]:.1f}, {Kd[2]:.1f}])")
+        return Kp, Ki, Kd
 
 
 if __name__ == "__main__":
-    bot = Robot()
-    ga = GA(bot, n_pop=50, gens=50)
-    ga.run()
+    robot = Robot3DoF_Spatial()
+    optimizer = PIDGeneticOptimizer(robot, pop_size=50, generations=100)
+    optimizer.run()

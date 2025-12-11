@@ -2,45 +2,66 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-class Monitor:
+class PerformanceMonitor:
     def __init__(self):
-        self.t = []
-        self.err = []
-        self.q_ref = []
-        self.q_act = []
-        self.tau = []
+        self.time_log = []
+        self.pos_error_log = []
+        self.joint_targets = []
+        self.joint_actuals = []
+        self.torques = []
 
-    def log(self, t, p_ref, p_act, q_ref, q_act, tau):
-        e = np.linalg.norm(p_ref - p_act)
-        self.err.append(e)
-        self.t.append(t)
-        self.q_ref.append(q_ref.copy())
-        self.q_act.append(q_act.copy())
-        self.tau.append(tau.copy())
+    def log(self, t, target_pos, current_pos, target_q, current_q, torque):
+
+        err = np.linalg.norm(target_pos - current_pos)
+        self.pos_error_log.append(err)
+        self.time_log.append(t)
+        self.joint_targets.append(target_q.copy())
+        self.joint_actuals.append(current_q.copy())
+        self.torques.append(torque.copy())
 
     def plot(self):
-        if not self.t: return
 
-        qr = np.array(self.q_ref)
-        qa = np.array(self.q_act)
-        ts = np.array(self.tau)
+        if not self.time_log:
+            print("[Monitor] No data.")
+            return
 
-        fig, ax = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
-        names = ['Base', 'Shoulder', 'Elbow']
+        joint_targets = np.array(self.joint_targets)
+        joint_actuals = np.array(self.joint_actuals)
+        torques = np.array(self.torques)
+
+        # 创建 3x1 子图
+        fig, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+        fig.suptitle("Joint Space PID Dynamics Response", fontsize=16)
+
+        joint_names = ['Joint 1 (Base)', 'Joint 2 (Shoulder)', 'Joint 3 (Elbow)']
 
         for i in range(3):
-            a1 = ax[i]
-            l1, = a1.plot(self.t, qr[:, i], 'r--', label='Ref')
-            l2, = a1.plot(self.t, qa[:, i], 'b-', label='Act')
-            a1.set_ylabel(f"{names[i]} (rad)")
-            a1.grid(True, ls=':', alpha=0.6)
+            ax1 = axes[i]
+            # 左轴：角度 (Position)
+            l1, = ax1.plot(self.time_log, joint_targets[:, i], 'r--', label='Target (rad)', alpha=0.8)
+            l2, = ax1.plot(self.time_log, joint_actuals[:, i], 'b-', label='Actual (rad)', lw=2)
+            ax1.set_ylabel(f"{joint_names[i]}\nAngle (rad)", fontsize=12)
+            ax1.grid(True, linestyle=':', alpha=0.6)
 
-            a2 = a1.twinx()
-            l3, = a2.plot(self.t, ts[:, i], 'g-', alpha=0.3)
-            a2.set_ylabel("Nm", color='green')
+            # 右轴：力矩 (Torque)
+            ax2 = ax1.twinx()
+            l3, = ax2.plot(self.time_log, torques[:, i], 'g-', label='Torque (Nm)', alpha=0.3, lw=1)
+            ax2.set_ylabel("Torque (Nm)", color='green', fontsize=12)
+            ax2.tick_params(axis='y', labelcolor='green')
 
-            if i == 0: a1.legend([l1, l2, l3], ['Ref', 'Act', 'Torque'])
+            # 合并图例
+            lines = [l1, l2, l3]
+            ax1.legend(lines, [l.get_label() for l in lines], loc='upper right')
 
-        ax[-1].set_xlabel("Time (s)")
+        axes[-1].set_xlabel("Time (s)", fontsize=12)
         plt.tight_layout()
         plt.show()
+
+        # 可选：如果你还想看笛卡尔误差
+        # plt.figure(figsize=(8, 4))
+        # plt.plot(self.time_log, self.pos_error_log, 'k-')
+        # plt.title("Cartesian Tracking Error")
+        # plt.xlabel("Time (s)")
+        # plt.ylabel("Error (m)")
+        # plt.grid(True)
+        # plt.show()

@@ -1,110 +1,123 @@
 import numpy as np
 import traceback
+
+# 引入模块
 from scene import Scene
 from shelf import Shelf
-from robot import Robot, PID
-from planner import RRTPlanner, TaskScheduler
-from simulation import Sim
-from monitor import Monitor
-from user_interface import UI
-from safe_point_manager import SafeManager
+from robot import Robot3DoF_Spatial, TorquePIDController
+from planner import JointRRTPlanner, TaskPlanner
+from simulation import Simulation
+from monitor import PerformanceMonitor
+from user_interface import UserInterface
+from safe_point_manager import SafePointManager
 
 
-def init_env():
-    s = Scene()
-    dy, dx = 0.55, 0.16
+def setup_scene():
+    scene = Scene()
+    dist_y, dist_x_gap = 0.55, 0.16
     shelves = {
-        'A': Shelf('A', (dx, dy)),
-        'B': Shelf('B', (-dx, dy)),
-        'C': Shelf('C', (dx, -dy)),
-        'D': Shelf('D', (-dx, -dy))
+        'A': Shelf('A', (dist_x_gap, dist_y), num_layers=3),
+        'B': Shelf('B', (-dist_x_gap, dist_y), num_layers=3),
+        'C': Shelf('C', (dist_x_gap, -dist_y), num_layers=3),
+        'D': Shelf('D', (-dist_x_gap, -dist_y), num_layers=3)
     }
-    for v in shelves.values(): s.add_shelf(v)
-    s.draw_static()
-    return s, shelves
+    for s in shelves.values(): scene.add_shelf(s)
+    scene.draw_static_elements()
+    return scene, shelves
 
 
-def run_dyn(robot, scene, mon, traj, pts):
-    qs, phs, mds = traj
-    if len(qs) == 0: return
+def execute_simulation_dynamics(robot, scene, monitor, traj_data, task_points):
+    q_traj, phases, modes = traj_data
+    if len(q_traj) == 0: return
 
-    print(f"[Main] Sim Dynamics...")
+    print(f"[Main] Starting Dynamics Simulation (PD + Gravity Comp)...")
 
-    # before optimized
-    # kp = np.array([150, 30, 10])
-    # ki = np.array([150, 30, 10])
-    # kd = np.array([150, 30, 10])
-    # after optimized
-    # kp = np.array([185.1, 118.0, 155.3])
-    # ki = np.array([6.0, 12.9, 11.3])
-    # kd = np.array([10.3, 7.4, 1.0])
-    kp = np.array([200.0, 173.3, 89.2])
-    ki = np.array([2.3, 5.8, 15.3])
-    kd = np.array([13.8, 11.1, 1.0])
+    Kp_vec = np.array([185.1, 118.0, 155.3])
+    Ki_vec = np.array([6.0, 12.9, 11.3])
+    Kd_vec = np.array([10.3, 7.4, 1.0])
+    # Kp_vec = np.array([182.8, 471.9, 121.1])
+    # Ki_vec = np.array([3.2, 11.5, 2.6])
+    # Kd_vec = np.array([15.2, 32.3, 1.0])
 
 
-    pid = PID(kp, ki, kd, 0.01, robot.max_tau)
-    q = qs[0].copy()
+    pid = TorquePIDController(Kp=Kp_vec, Ki=Ki_vec, Kd=Kd_vec, dt=0.01,
+                              max_torque=robot.max_torque)
+
+    dt = 0.01
+    q = q_traj[0].copy()
     dq = np.zeros(3)
 
-    hist = {'q': [], 'ee': [], 'phase': [], 'mode': []}
+    history = {'q': [], 'ee': [], 'phase': [], 'wrist_mode': []}
 
     try:
-        for i, ref in enumerate(qs):
-            t = i * 0.01
-            tau_pid = pid.update(ref, q, dq)
-            tau_g = robot.grav_tau(q)
-            tau = tau_pid + tau_g
+        for i, target_q in enumerate(q_traj):
+            t_now = i * dt
 
-            ddq = robot.dynamics(q, dq, tau)
-            dq += ddq * 0.01
-            q += dq * 0.01
+            tau_pd = pid.update(target_q, q, dq)
+            tau_gravity = robot.get_gravity_torque(q)
+            tau_cmd = tau_pd + tau_gravity
+            ddq = robot.forward_dynamics(q, dq, tau_cmd)
 
-            fk = robot.fk(q)
-            hist['q'].append(q.copy())
-            hist['ee'].append(fk[-1].copy())
-            hist['phase'].append(phs[i])
-            hist['mode'].append(mds[i])
+            dq += ddq * dt
+            q += dq * dt
 
-            mon.log(t, robot.fk(ref)[-1], fk[-1], ref, q, tau)
+            #
+            fk = robot.forward_kinematics(q)
+            history['q'].append(q.copy())
+            history['ee'].append(fk[-1].copy())
+            history['phase'].append(phases[i])
+            history['wrist_mode'].append(modes[i])
 
-    except:
+            # 记录详细数据用于绘图
+            monitor.log(t_now,
+                        robot.forward_kinematics(target_q)[-1], fk[-1],  # 笛卡尔
+                        target_q, q, tau_cmd)  # 关节 & 力矩
+
+    except Exception:
         traceback.print_exc()
 
-    if hist['q']:
-        print("[Main] Animation...")
-        sim = Sim(scene, robot, hist, {'pick': pts[0], 'place': pts[1]})
-        sim.run(10)
-        mon.plot()
+    # 播放动画
+    if history['q']:
+        print("[Main] Playing Animation...")
+        sim = Simulation(scene, robot, history, {'p_pick': task_points[0], 'p_place': task_points[1]})
+        sim.run(interval=10)
+        monitor.plot()  #
 
 
 def main():
+
     try:
-        ui = UI(['A', 'B', 'C', 'D'], range(1, 4))
-        cfg = ui.get_task()
+        ui = UserInterface(valid_shelves=['A', 'B', 'C', 'D'], layers_range=range(1, 4))
+        task_cfg = ui.get_user_task()
     except:
-        cfg = {'pick': {'id': 'A', 'layer': 2}, 'place': {'id': 'C', 'layer': 1}}
+        task_cfg = {'pick': {'id': 'A', 'layer': 2}, 'place': {'id': 'C', 'layer': 1}}
 
-    bot = Robot()
-    rrt = RRTPlanner(step=0.08, max_iter=15000)
-    mon = Monitor()
-    scene, db = init_env()
-    safe = SafeManager(scene, bot, rrt)
+    # 2. 初始化
+    robot = Robot3DoF_Spatial()
+    planner_algo = JointRRTPlanner(step_size=0.08, max_iter=15000)
+    monitor = PerformanceMonitor()
+    scene, shelves_db = setup_scene()
+    safe_manager = SafePointManager(scene, robot, planner_algo)
+    safe_manager.solve_all_iks()
+    scene.add_safe_points(safe_manager.safe_points_map)
 
-    sched = TaskScheduler(bot, rrt, safe, scene)
-    res = sched.plan_task(
-        db[cfg['pick']['id']], cfg['pick']['layer'],
-        db[cfg['place']['id']], cfg['place']['layer']
+    # 3. 规划
+    task_planner = TaskPlanner(robot, planner_algo, safe_manager, scene)
+    result = task_planner.plan_pick_and_place(
+        pick_shelf=shelves_db[task_cfg['pick']['id']],
+        pick_layer=task_cfg['pick']['layer'],
+        place_shelf=shelves_db[task_cfg['place']['id']],
+        place_layer=task_cfg['place']['layer']
     )
 
-    if res is None:
-        print("[Main] Failed.")
+    if result is None:
+        print("[Main] Planning failed.")
         return
 
-    full_q, phs, mds, pts = res
-    vis = [bot.fk(q)[-1] for q in full_q]
-    scene.draw_path(np.array(vis), 'lime')
-    run_dyn(bot, scene, mon, (full_q, phs, mds), pts)
+    full_traj, phases, modes, task_points = result
+    vis_pts = [robot.forward_kinematics(q)[-1] for q in full_traj]
+    scene.draw_trajectory(np.array(vis_pts), color='lime')
+    execute_simulation_dynamics(robot, scene, monitor, (full_traj, phases, modes), task_points)
 
 
 if __name__ == "__main__":
